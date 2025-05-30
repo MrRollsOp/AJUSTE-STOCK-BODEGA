@@ -5,7 +5,7 @@ Este documento explica el procedimiento paso a paso para realizar el ajuste de s
 ---
 
 ## 1. Preparar el archivo CSV
-
+- Primero que todo guardar el excel en formato (CSV DELIMITADO POR COMAS) (*.csv) en la carpeta `GITHUB-ACTUALIZACION-STOCK`
 - Asegúrate de tener el archivo `BODEGA.csv` en el mismo directorio que el script.
 - El archivo debe contener las siguientes columnas (en este orden):
     1. Código de artículo
@@ -56,3 +56,13 @@ Este documento explica el procedimiento paso a paso para realizar el ajuste de s
 - Es recomendable realizarlo primero en un ambiente de prueba Ej: MIHIS_DEV.
 
 ---
+
+
+delete from stock where stock_log_id = 45635 and stock_bod_id = 2 and stock_id >= 26703033
+
+
+stock_log_id es estatico
+
+stock_bod_id es variable dependiendo de la bodega
+
+stock_id es estatico

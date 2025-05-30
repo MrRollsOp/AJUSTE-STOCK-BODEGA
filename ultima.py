@@ -28,7 +28,7 @@ DB = {"host": "10.4.199.86", "port": 5432,
 
 BOD_ID  = 2   # ID DE LA BODEGA A AJUSTAR
 LOG_ID  = 45635
-CSV_FILE   = Path("BODEGA.csv")  # CSV DE STOCK A INSERTAR
+CSV_FILE   = Path("bodega_farmacia.csv")  # CSV DE STOCK A INSERTAR
 DELIM      = "|"
 SQL_OUTPUT = Path("insert_stock_bodega.sql")
 
