@@ -4,7 +4,7 @@
 • Consulta stock actual total en BD          → actual
 • diff = deseado - actual  (puede ser ±)
 • Genera INSERTs con diff
-• UPDATE a cero pares ausentes
+• INSERT negativo por pares ausentes en CSV
 """
 
 import csv, sys
@@ -14,21 +14,20 @@ import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 
 # ───────── Config ─────────
-DB = {"host": "10.4.199.86", "port": 5432,
-      "dbname": "mihis_end", "user": "postgres",
-      "password": "soporte010203"}
-
-
-
-# ───────── Config Dev ─────────
-#DB = {"host": "10.4.199.39", "port": 5432,
-#      "dbname": "mihis_dev", "user": "postgres",
+#DB = {"host": "10.4.199.39", "port": "5432",
+#      "dbname": "mihis_qa", "user": "postgres",
 #      "password": "soporte010203"}
 
 
-BOD_ID  = 35   # ID DE LA BODEGA A AJUSTAR
-LOG_ID  = 45635
-CSV_FILE   = Path("bodega_farmacia.csv")  # CSV DE STOCK A INSERTAR
+# ───────── Config ─────────
+DB = {"host": "10.4.199.86", "port": "5432",
+      "dbname": "mihis_end", "user": "postgres",
+      "password": "soporte010203"}
+
+BOD_ID  = 71   # ID DE LA BODEGA A AJUSTAR
+LOG_ID  = 17099365
+
+CSV_FILE   = Path("embarazo_patologico.csv")  # CSV DE STOCK A INSERTAR
 DELIM      = "|"
 SQL_OUTPUT = Path("insert_stock_bodega.sql")
 
@@ -100,7 +99,6 @@ def main():
                 print(f"❌ Línea {ln}: código '{codigo}' no existe", file=sys.stderr)
                 continue
 
-            # ★★ usa objeto date, no string
             vence_val = None
             if fv_txt:
                 try:
@@ -117,7 +115,8 @@ def main():
 
         actual = get_stock_actual_bulk(cur, list(desired.keys()))
 
-        # INSERTS
+        # INSERTS para diferencias
+        out.write("-- —— INSERTS AJUSTES SEGÚN CSV ——\n")
         for (art_id, vence), deseado in desired.items():
             actual_tot = actual.get((art_id, vence), 0)
             diff = deseado - actual_tot
@@ -126,33 +125,36 @@ def main():
 
             vence_sql = "NULL"
             if vence is not None:
-                vence_sql = f"'{vence.isoformat()}'::date"   # ★★
+                vence_sql = f"'{vence.isoformat()}'::date"
 
             out.write(
                 f"INSERT INTO stock (stock_art_id, stock_bod_id, stock_cant, "
-                f" stock_subtotal, stock_log_id, stock_vence) "
+                f"stock_subtotal, stock_log_id, stock_vence) "
                 f"VALUES ({art_id}, {BOD_ID}, {diff}, {diff}, {LOG_ID}, {vence_sql});\n"
             )
 
-        # UPDATE a cero los pares ausentes
-        out.write("\n-- —— ZEROS PARA PARES AUSENTES ——\n")
-        out.write("WITH csv_data(art_id, vence) AS (\n  VALUES\n")
-        pairs = list(desired.keys())
-        for i, (aid, v) in enumerate(pairs):
-            v_sql = "NULL::date" if v is None else f"'{v.isoformat()}'::date"  # ★★
-            out.write(f"    ({aid}, {v_sql}){',' if i < len(pairs)-1 else ''}\n")
-        out.write(")\n")
-        out.write(f"""UPDATE stock AS s
-SET    stock_cant     = 0,
-       stock_subtotal = 0,
-       stock_log_id   = {LOG_ID}
-WHERE  s.stock_bod_id = {BOD_ID}
-  AND NOT EXISTS (
-        SELECT 1 FROM csv_data d
-        WHERE d.art_id = s.stock_art_id
-          AND ((d.vence IS NULL AND s.stock_vence IS NULL)
-               OR d.vence = s.stock_vence)
-);\n""")
+        # INSERTS negativos para combinaciones en BD pero no en CSV
+        out.write("\n-- —— INSERTS PARA ELIMINAR COMBINACIONES AUSENTES ——\n")
+        cur.execute(f"""
+            SELECT stock_art_id, stock_vence, SUM(stock_cant) AS total
+            FROM stock
+            WHERE stock_bod_id = %s
+            GROUP BY stock_art_id, stock_vence
+        """, (BOD_ID,))
+        existentes_bd = {(r["stock_art_id"], r["stock_vence"]): r["total"] for r in cur.fetchall()}
+
+        for key, actual_tot in existentes_bd.items():
+            if key not in desired and actual_tot != 0:
+                art_id, vence = key
+                diff = -actual_tot
+                vence_sql = "NULL"
+                if vence is not None:
+                    vence_sql = f"'{vence.isoformat()}'::date"
+                out.write(
+                    f"INSERT INTO stock (stock_art_id, stock_bod_id, stock_cant, "
+                    f"stock_subtotal, stock_log_id, stock_vence) "
+                    f"VALUES ({art_id}, {BOD_ID}, {diff}, {diff}, {LOG_ID}, {vence_sql});\n"
+                )
 
     print(f"✅ Script generado: {SQL_OUTPUT}")
 
